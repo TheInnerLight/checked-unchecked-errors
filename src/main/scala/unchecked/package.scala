@@ -3,6 +3,7 @@ import shared._
 import cats.implicits._
 
 package object unchecked {
+  // type class for sending http
   trait SendHttp[F[_]] {
     def send[A, B](request: Request[A]) : F[Response[B]]
   }
@@ -11,6 +12,7 @@ package object unchecked {
     def apply[F[_]](implicit sendHttp: SendHttp[F]): SendHttp[F] = sendHttp
   }
 
+  // type class for getting from postgres
   trait GetPostgres[F[_]] {
     def get[Id, Value](key : Id) : F[Value]
   }
@@ -19,18 +21,24 @@ package object unchecked {
     def apply[F[_]](implicit getPostgres: GetPostgres[F]): GetPostgres[F] = getPostgres
   }
 
+  // type class for getting program info
   trait GetProgramInfo[F[_]] {
     def getProgramInfo(programId : ProgramId) : F[ProgramInfo]
   }
 
-  class GetProgramInfoHttp[F[_] : SendHttp : Applicative] extends GetProgramInfo[F] {
-    override def getProgramInfo(programId : ProgramId): F[ProgramInfo] =
-      SendHttp[F].send[ProgramId, ProgramInfo](Request(programId)).map(_.body)
+  // implementations for Http / Postgres
+  object GetProgramInfoHttp {
+    implicit def getProgramInfoHttp[F[_] : SendHttp : Applicative]: GetProgramInfo[F] = new GetProgramInfo[F] {
+      override def getProgramInfo(programId : ProgramId): F[ProgramInfo] =
+        SendHttp[F].send[ProgramId, ProgramInfo](Request(programId)).map(_.body)
+    }
   }
 
-  class GetProgramInfoPostgres[F[_] : GetPostgres : Applicative] extends GetProgramInfo[F] {
-    override def getProgramInfo(programId: ProgramId): F[ProgramInfo] =
-      GetPostgres[F].get[ProgramId, ProgramInfo](programId)
+  object GetProgramInfoPostgres {
+    implicit def getProgramInfoPostgres[F[_] : GetPostgres : Applicative] : GetProgramInfo[F] = new GetProgramInfo[F] {
+      override def getProgramInfo(programId: ProgramId): F[ProgramInfo] =
+        GetPostgres[F].get[ProgramId, ProgramInfo](programId)
+    }
   }
 
   // Now add caching
@@ -48,7 +56,7 @@ package object unchecked {
   // Add a cache capability to anything :)
   def cached[F[_] : Cache : Monad, Id, Value](f : Id => F[Value]) : Id => F[Value] = id =>
     for {
-      maybeVal <- Cache[F].get(id)
+      maybeVal <- Cache[F].get[Id, Value](id)
       result <- maybeVal match {
         case Some(value) => Monad[F].pure(value)
         case None        => f(id)

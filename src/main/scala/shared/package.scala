@@ -4,7 +4,7 @@ package object shared {
 
   case class Response[A](body : A)
 
-  case class ProgramId()
+  case class ProgramId(id : String)
 
   case class ProgramInfo()
 
